@@ -26,6 +26,7 @@ dbDisconnect(db, shutdown = TRUE)
 counts$year <- as.integer(counts$year)
 field$year  <- as.integer(field$year)
 titles$pmid <- sprintf("%.0f", as.numeric(titles$pmid))
+titles$title <- trimws(gsub("<[^>]+>", "", titles$title))   # PubMed titles can contain <sup>, <i>
 
 YEARS     <- 2015:2025
 FIELD_PCT <- round(mean(selected$growth_pct - selected$excess_pct), 1)
@@ -83,12 +84,14 @@ source_list <- function(pmid_string) {
 }
 
 describe_topic <- function(row) {
-  kind <- switch(row$kind, Chemical = "Drug or compound", Gene = "Gene",
-                 ProteinMutation = "Mutation", row$kind)
-  rel <- if (row$rel_type == "treat") "studied as a treatment for colorectal cancer"
-  else "linked to colorectal cancer"
-  sprintf("%s %s. %s papers from 2015 to 2025, %s of them since 2023. Grew %.1f%% per year, compared with %.1f%% for colorectal cancer research overall.",
-          kind, rel, format(row$total_2015_2025, big.mark = ","),
+  lead <- if (row$kind == "Chemical" && row$rel_type == "treat") {
+    "Drug studied as a treatment for colorectal cancer"
+  } else {
+    paste(switch(row$kind, Chemical = "Molecule", Gene = "Gene",
+                 ProteinMutation = "Mutation", row$kind), "linked to colorectal cancer")
+  }
+  sprintf("%s. %s papers from 2015 to 2025, %s of them since 2023. Grew %.1f%% per year, compared with %.1f%% for colorectal cancer research overall.",
+          lead, format(row$total_2015_2025, big.mark = ","),
           format(row$recent_2023_2025, big.mark = ","), row$growth_pct, FIELD_PCT)
 }
 
@@ -114,6 +117,8 @@ theme <- bs_theme(
 
 styles <- tags$style(HTML(sprintf("
   :root { --hema: %s; --eosin: %s; --muted: %s; --rule: %s; }
+  .page-wrap { max-width: 1200px; margin: 0 auto; padding: 0 1rem 3rem; }
+  .topic-picker { max-width: 480px; }
   .intro h1 { color: var(--hema); font-weight: 700; font-size: clamp(1.6rem, 3vw, 2.2rem);
               letter-spacing: -0.01em; max-width: 24ch; margin: 1.5rem 0 .5rem; }
   .intro p  { color: var(--muted); max-width: 68ch; font-size: 1.02rem; }
@@ -132,7 +137,7 @@ styles <- tags$style(HTML(sprintf("
   .qa { border-top: 1px solid var(--rule); padding: 1.75rem 0; }
   .qa h3 { font-size: 1.2rem; font-weight: 600; color: var(--hema); max-width: 60ch; }
   .qa details summary { cursor: pointer; color: var(--hema); font-size: .95rem; }
-  .methods { max-width: 72ch; }
+  .methods.page-wrap { max-width: 760px; margin: 0 auto; }
   .methods h2 { color: var(--hema); font-size: 1.35rem; font-weight: 700; margin-top: 2rem; }
   .methods table { font-size: .93rem; }
   a:focus-visible, .form-select:focus, .form-check-input:focus {
@@ -149,45 +154,50 @@ fonts <- tags$link(
 
 topics_tab <- nav_panel(
   "Topics",
-  div(class = "intro",
-      h1("Which colorectal cancer topics are growing fastest?"),
-      p(sprintf(paste(
-        "Each bar shows how much faster a topic's yearly publication count grew",
-        "from 2015 to 2025 than colorectal cancer research overall (%.1f%% per year).",
-        "Click a bar, or choose from the list below, to read what recent papers report."),
-        FIELD_PCT))),
-  plotlyOutput("ranking", height = "470px"),
-  div(class = "section-rule"),
-  layout_columns(
-    col_widths = c(12, 12, 5, 7),
-    selectInput("topic", "Topic", choices = topics, selected = topics[1], width = "100%"),
-    uiOutput("topic_head"),
-    div(
-      radioButtons("view", NULL, inline = TRUE,
-                   choices = c("Share of all colorectal cancer papers" = "share",
-                               "Number of papers" = "n")),
-      plotlyOutput("trend", height = "340px")
-    ),
-    uiOutput("summary")
+  div(class = "page-wrap",
+      div(class = "intro",
+          h1("Which colorectal cancer topics are growing fastest?"),
+          p(sprintf(paste(
+            "Each bar shows how much faster a topic's yearly publication count grew",
+            "from 2015 to 2025 than colorectal cancer research overall (%.1f%% per year).",
+            "Click a bar, or choose from the list below, to read what recent papers report."),
+            FIELD_PCT))),
+      plotlyOutput("ranking", height = "520px"),
+      div(class = "section-rule"),
+      layout_columns(
+        col_widths = c(12, 12, 5, 7),
+        div(class = "topic-picker",
+            selectInput("topic", "Topic", choices = topics, selected = topics[1], width = "100%")),
+        uiOutput("topic_head"),
+        div(
+          radioButtons("view", NULL, inline = TRUE,
+                       choices = c("Share of all colorectal cancer papers" = "share",
+                                   "Number of papers" = "n")),
+          plotlyOutput("trend", height = "340px")
+        ),
+        uiOutput("summary")
+      )
   )
 )
 
 qa_tab <- nav_panel(
   "Saved questions",
-  div(class = "intro",
-      h1("Questions answered from the literature"),
-      p(sprintf(paste(
-        "Each answer was written from the six most relevant of %s recent abstracts,",
-        "found by meaning rather than keywords. When the abstracts don't cover a",
-        "question, the answer says so instead of guessing. New questions are asked",
-        "in the project notebook."),
-        format(nrow(titles), big.mark = ",")))),
-  uiOutput("qa_list")
+  div(class = "page-wrap",
+      div(class = "intro",
+          h1("Questions answered from the literature"),
+          p(sprintf(paste(
+            "Each answer was written from the six most relevant of %s recent abstracts,",
+            "found by meaning rather than keywords. When the abstracts don't cover a",
+            "question, the answer says so instead of guessing. New questions are asked",
+            "in the project notebook."),
+            format(nrow(titles), big.mark = ",")))),
+      uiOutput("qa_list")
+  )
 )
 
 methods_tab <- nav_panel(
   "Methods",
-  div(class = "methods",
+  div(class = "methods page-wrap",
       div(class = "intro", h1("How this was built")),
       p("The data come from PubTator3, NCBI's database of genes, drugs, diseases, and",
         "the relationships between them, text-mined from PubMed abstracts."),
@@ -203,6 +213,8 @@ methods_tab <- nav_panel(
                 "and recounted unique articles."),
         tags$li(sprintf("Kept the %d fastest-growing topics with at least 30 papers since 2023.",
                         nrow(selected))),
+        tags$li("Removed retracted papers, retraction notices, and published corrections",
+                "(5 of 1,332 recent abstracts) using PubMed's publication types and a title check."),
         tags$li("Summarized each topic from its 8 most recent abstracts with Claude Haiku 4.5,",
                 "restricted to those abstracts and required to cite a PMID for every claim."),
         tags$li("Embedded the recent abstracts with sentence-transformers so questions are",
@@ -249,6 +261,7 @@ methods_tab <- nav_panel(
 ui <- page_navbar(
   title = "Colorectal cancer research trends",
   theme = theme,
+  fillable = FALSE,
   header = tagList(fonts, styles),
   topics_tab, qa_tab, methods_tab
 )
@@ -276,7 +289,8 @@ server <- function(input, output, session) {
             hovertemplate = "%{text}<extra></extra>") %>%
       layout(xaxis = list(title = "Growth above the field, percentage points per year",
                           gridcolor = RULE, zeroline = FALSE, fixedrange = TRUE),
-             yaxis = list(title = "", fixedrange = TRUE),
+             yaxis = list(title = "", fixedrange = TRUE, dtick = 1, automargin = TRUE),
+             bargap = 0.35,
              font = PLOT_FONT, margin = list(l = 10, r = 10, t = 10, b = 50),
              plot_bgcolor = "rgba(0,0,0,0)", paper_bgcolor = "rgba(0,0,0,0)") %>%
       config(displayModeBar = FALSE) %>%
