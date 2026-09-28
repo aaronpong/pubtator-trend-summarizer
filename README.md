@@ -51,8 +51,8 @@ flowchart LR
 2. **Date each article.** Publication years come from PubMed's E-utilities API. 46 of 106,817 IDs (0.04%) could not be retrieved.
 3. **Model the trends.** For each relationship with at least 50 papers from 2015 to 2025, a log-linear regression (scikit-learn) estimates yearly growth. Each topic's growth is compared with the field's overall growth, so "trending" means growing faster than colorectal cancer research as a whole, not just being large. 2026 is excluded because it is a partial year.
 4. **Clean duplicate concepts.** Mouse and human versions of the same gene, and two MeSH records for m6A, are merged and their unique articles recounted.
-5. **Summarize.** For each of the 15 topics, Claude Haiku 4.5 summarizes the 8 most recent abstracts. The prompt restricts it to those abstracts and requires a PMID citation for every claim.
-6. **Answer questions (RAG).** Every 2023–2025 abstract for the 15 topics is embedded with sentence-transformers (all-MiniLM-L6-v2). A question retrieves the 6 most similar abstracts, and Claude answers from only those, or says the abstracts don't cover it.
+5. **Summarize.** Retracted papers, retraction notices, and published corrections are removed first, using PubMed's publication types. Then, for each of the 15 topics, Claude Haiku 4.5 summarizes the 8 most recent abstracts. The prompt restricts it to those abstracts and requires a PMID citation for every claim.
+6. **Answer questions (RAG).** Every 2023–2025 abstract for the 15 topics (about 1,300) is embedded with sentence-transformers (all-MiniLM-L6-v2). A question retrieves the 6 most similar abstracts, and Claude answers from only those, or says the abstracts don't cover it.
 7. **Visualize.** An R Shiny dashboard shows the trend rankings, each topic's yearly publication share, the summaries with linked sources, and saved Q&A.
 
 ## Evaluation
@@ -69,6 +69,8 @@ Manual review then covered what the checks cannot. Each round of review led to a
 | v1 | Test run | A regional subgroup result (Spain, n=180) was presented as the overall FRESCO-2 trial result | Require subgroup and secondary analyses to be labeled |
 | v2 | 13 of 15 passed | Proportions (0.82) rewritten as percentages (82%); PIK3CD summary showed its sources were mostly about the broader PI3K pathway | Forbid calculated or converted numbers; flag when abstracts cover a broader topic; plain text only |
 | v3 | **15 of 15 passed** | PIK3CD summary correctly flagged its own data limitation | Current version |
+
+Reviewing the finished dashboard also turned up a data problem that text checks cannot catch: a retraction notice among one topic's source abstracts. The pipeline now removes retracted papers, retraction notices, and corrections before summarizing or indexing anything.
 
 The checker was refined along the way: an early version flagged digits inside gene names (such as the 274 in CD274), split thousands separators, and missed "phase III" versus "phase 3." Fixing these moved v2 from 11 to 13 of 15 before any prompt change.
 
